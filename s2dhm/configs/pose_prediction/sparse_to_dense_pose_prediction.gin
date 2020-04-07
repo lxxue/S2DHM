@@ -12,3 +12,5 @@ solve_pnp.minimum_matches = 5
 
 # Exhaustive search parameters
 exhaustive_search.factor = 0.006
+
+SparseToDensePredictor.output_path = "/local/home/lixxue/S2DHM/results/features"
