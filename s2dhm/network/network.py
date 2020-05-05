@@ -11,6 +11,7 @@ import torch.nn as nn
 from torch.nn.parallel import DataParallel
 from torch.nn.functional import interpolate
 from torchvision import models
+from network.gnnet_model import EmbeddingNet, GNNet
 
 @gin.configurable
 class ImageRetrievalModel():
@@ -38,6 +39,11 @@ class ImageRetrievalModel():
         self._hypercolumn_layers = hypercolumn_layers
         self._device = device
         self._model = self._build_model()
+        self._feature_extractor = GNNet(EmbeddingNet())
+        self._feature_extractor.load_state_dict(torch.load("/local/home/lixxue/S2DHM/checkpoints/gnnet/24_model_best.pth.tar"))
+        self._feature_extractor.to(self._device)
+        self._feature_extractor.eval()
+        # print("successfully load gn net")
 
     def _build_model(self):
         """ Build image retrieval network and load pre-trained weights.
@@ -131,33 +137,43 @@ class ImageRetrievalModel():
                 resize=resize,
                 device=self._device)
             image_resolution = feature_map[0].shape[1:]
-            feature_maps, j = [], 0
-            for i, layer in enumerate(list(self._model.encoder.children())):
-                if(j==len(self._hypercolumn_layers)):
-                    break
-                if(i==self._hypercolumn_layers[j]):
-                    feature_maps.append(feature_map)
-                    j+=1
-                feature_map = layer(feature_map)
+            # original shape: 1x2048x96x128
+            # 4 resolutions:
+            # torch.Size([1, 16, 48, 64])
+            # torch.Size([1, 16, 96, 128])
+            # torch.Size([1, 16, 192, 256])
+            # torch.Size([1, 16, 384, 512])
+            hypercolumn = self._feature_extractor.get_embedding(feature_map)[2]
+            # for i in range(len(hypercolumn)):
+            #     print(hypercolumn[i].shape)
+            # feature_maps, j = [], 0
+            # for i, layer in enumerate(list(self._model.encoder.children())):
+            #     if(j==len(self._hypercolumn_layers)):
+            #         break
+            #     if(i==self._hypercolumn_layers[j]):
+            #         feature_maps.append(feature_map)
+            #         j+=1
+            #     feature_map = layer(feature_map)
 
-            # Final descriptor size (concat. intermediate features)
-            final_descriptor_size = sum([x.shape[1] for x in feature_maps])
-            b, c, w, h = feature_maps[0].shape
-            hypercolumn = torch.zeros(
-                b, final_descriptor_size, w, h).to(self._device)
+            # # Final descriptor size (concat. intermediate features)
+            # final_descriptor_size = sum([x.shape[1] for x in feature_maps])
+            # b, c, w, h = feature_maps[0].shape
+            # hypercolumn = torch.zeros(
+            #     b, final_descriptor_size, w, h).to(self._device)
 
-            # Upsample to the largest feature map size
-            start_index = 0
-            for j in range(len(self._hypercolumn_layers)):
-                descriptor_size = feature_maps[j].shape[1]
-                upsampled_map = interpolate(
-                    feature_maps[j], size=(w, h),
-                    mode='bilinear', align_corners=True)
-                hypercolumn[:, start_index:start_index + descriptor_size, :, :] = upsampled_map
-                start_index += descriptor_size
+            # # Upsample to the largest feature map size
+            # start_index = 0
+            # for j in range(len(self._hypercolumn_layers)):
+            #     descriptor_size = feature_maps[j].shape[1]
+            #     upsampled_map = interpolate(
+            #         feature_maps[j], size=(w, h),
+            #         mode='bilinear', align_corners=True)
+            #     hypercolumn[:, start_index:start_index + descriptor_size, :, :] = upsampled_map
+            #     start_index += descriptor_size
 
             # Delete and empty cache
-            del feature_maps, feature_map, upsampled_map
+            # del feature_maps, feature_map, upsampled_map
+            del feature_map
             torch.cuda.empty_cache()
 
         # Normalize descriptors
@@ -165,6 +181,8 @@ class ImageRetrievalModel():
             hypercolumn, p=2, dim=1, keepdim=True)
         if to_cpu:
             hypercolumn = hypercolumn.cpu().data.numpy()
+        # print(hypercolumn.shape)
+        # print(image_resolution)
         return hypercolumn, image_resolution
 
     @property

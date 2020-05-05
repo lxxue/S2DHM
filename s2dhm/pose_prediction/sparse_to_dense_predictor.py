@@ -58,46 +58,46 @@ class SparseToDensePredictor(predictor.PosePredictor):
 
         # save query images' hypercolumn
         # query_features = {}
-        print(">> Computing query images' features")
-        for i in tqdm(range(len(self._dataset.data['query_image_names']))):
-            query_image = self._dataset.data['query_image_names'][i]
-            if query_image not in self._filename_to_intrinsics:
-                continue
-            query_dense_hypercolumn, _ = self._network.compute_hypercolumn(
-                [query_image], to_cpu=True, resize=True)
-            query_dense_hypercolumn = query_dense_hypercolumn.squeeze()
-            # query_features[query_image] = query_dense_hypercolumn
-            query_slice = query_image.split("/")[-3]
-            img_name = query_image.split("/")[-1]
-            parent = Path(self._output_path, "query")
-            if not os.path.exists(parent):
-                os.makedirs(parent)
-            parent = Path(parent, query_slice)
-            if not os.path.exists(parent):
-                os.makedirs(parent)
-            output_filename = Path(parent, img_name)
-            torch.save(query_dense_hypercolumn, output_filename.with_suffix('.pt'))
+        # print(">> Computing query images' features")
+        # for i in tqdm(range(len(self._dataset.data['query_image_names']))):
+        #     query_image = self._dataset.data['query_image_names'][i]
+        #     if query_image not in self._filename_to_intrinsics:
+        #         continue
+        #     query_dense_hypercolumn, _ = self._network.compute_hypercolumn(
+        #         [query_image], to_cpu=True, resize=True)
+        #     query_dense_hypercolumn = query_dense_hypercolumn.squeeze()
+        #     # query_features[query_image] = query_dense_hypercolumn
+        #     query_slice = query_image.split("/")[-3]
+        #     img_name = query_image.split("/")[-1]
+        #     parent = Path(self._output_path, "query")
+        #     if not os.path.exists(parent):
+        #         os.makedirs(parent)
+        #     parent = Path(parent, query_slice)
+        #     if not os.path.exists(parent):
+        #         os.makedirs(parent)
+        #     output_filename = Path(parent, img_name)
+        #     torch.save(query_dense_hypercolumn, output_filename.with_suffix('.pt'))
 
-        # query_slice = query_image.split("/")[-3]
-        # torch.save(query_features, Path(self._output_path, "query_features_{}.pt".format(query_slice)))
+        # # query_slice = query_image.split("/")[-3]
+        # # torch.save(query_features, Path(self._output_path, "query_features_{}.pt".format(query_slice)))
 
-        print(">> Computing reference images' features")
-        #reference_features = {}
-        for i in tqdm(range(len(self._dataset.data['reference_image_names']))):
-            reference_image = self._dataset.data['reference_image_names'][i]
-            reference_dense_hypercolumn, _ = self._network.compute_hypercolumn(
-                [reference_image], to_cpu=True, resize=True)
-            reference_dense_hypercolumn = reference_dense_hypercolumn.squeeze()
-            reference_slice = reference_image.split("/")[-3]
-            img_name = reference_image.split("/")[-1]
-            parent = Path(self._output_path, "reference")
-            if not os.path.exists(parent):
-                os.makedirs(parent)
-            parent = Path(parent, reference_slice)
-            if not os.path.exists(parent):
-                os.makedirs(parent)
-            output_filename = Path(parent, img_name)
-            torch.save(reference_dense_hypercolumn, output_filename.with_suffix('.pt'))
+        # print(">> Computing reference images' features")
+        # #reference_features = {}
+        # for i in tqdm(range(len(self._dataset.data['reference_image_names']))):
+        #     reference_image = self._dataset.data['reference_image_names'][i]
+        #     reference_dense_hypercolumn, _ = self._network.compute_hypercolumn(
+        #         [reference_image], to_cpu=True, resize=True)
+        #     reference_dense_hypercolumn = reference_dense_hypercolumn.squeeze()
+        #     reference_slice = reference_image.split("/")[-3]
+        #     img_name = reference_image.split("/")[-1]
+        #     parent = Path(self._output_path, "reference")
+        #     if not os.path.exists(parent):
+        #         os.makedirs(parent)
+        #     parent = Path(parent, reference_slice)
+        #     if not os.path.exists(parent):
+        #         os.makedirs(parent)
+        #     output_filename = Path(parent, img_name)
+        #     torch.save(reference_dense_hypercolumn, output_filename.with_suffix('.pt'))
 
             # reference_feature[reference_image] = reference_dense_hypercolumn
         # torch.save(reference_features, Path(self._output_path, "reference_features_{}.pt".format(query_slice)))
