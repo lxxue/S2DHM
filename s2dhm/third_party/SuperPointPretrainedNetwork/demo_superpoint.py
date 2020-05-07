@@ -53,6 +53,10 @@ import time
 import cv2
 import torch
 
+# modified:
+cuda = torch.cuda.is_available()
+device = torch.device("cuda:0" if cuda else "cpu")
+
 # Stub to warn about opencv version.
 if int(cv2.__version__[0]) < 3: # pragma: no cover
   print('Warning: OpenCV 3 is not installed')
@@ -141,7 +145,7 @@ class SuperPointFrontend(object):
     if cuda:
       # Train on GPU, deploy on GPU.
       self.net.load_state_dict(torch.load(weights_path))
-      self.net = self.net.cuda()
+      self.net = self.net.to(device)
     else:
       # Train on GPU, deploy on CPU.
       self.net.load_state_dict(torch.load(weights_path,
@@ -230,7 +234,7 @@ class SuperPointFrontend(object):
     inp = torch.from_numpy(inp)
     inp = torch.autograd.Variable(inp).view(1, 1, H, W)
     if self.cuda:
-      inp = inp.cuda()
+      inp = inp.to(device)
     # Forward pass of network.
     outs = self.net.forward(inp)
     semi, coarse_desc = outs[0], outs[1]
@@ -277,7 +281,7 @@ class SuperPointFrontend(object):
       samp_pts = samp_pts.view(1, 1, -1, 2)
       samp_pts = samp_pts.float()
       if self.cuda:
-        samp_pts = samp_pts.cuda()
+        samp_pts = samp_pts.to(device)
       desc = torch.nn.functional.grid_sample(coarse_desc, samp_pts)
       desc = desc.data.cpu().numpy().reshape(D, -1)
       desc /= np.linalg.norm(desc, axis=0)[np.newaxis, :]

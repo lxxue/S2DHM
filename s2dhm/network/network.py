@@ -16,14 +16,12 @@ from network.gnnet_model import EmbeddingNet, GNNet
 @gin.configurable
 class ImageRetrievalModel():
     """Build the image retrieval model with intermediate feature extraction.
-
     The model is made of a VGG-16 backbone combined with a NetVLAD pooling
     layer.
     """
     def __init__(self, num_clusters: int, encoder_dim: int,
                 checkpoint_path: str, hypercolumn_layers: List[int], device):
         """Initialize the Image Retrieval Network.
-
         Args:
             num_clusters: Number of NetVLAD clusters (should match pre-trained)
                 weights.
@@ -40,7 +38,8 @@ class ImageRetrievalModel():
         self._device = device
         self._model = self._build_model()
         self._feature_extractor = GNNet(EmbeddingNet())
-        self._feature_extractor.load_state_dict(torch.load("/local/home/lixxue/S2DHM/checkpoints/gnnet/24_model_best.pth.tar"))
+        self._feature_extractor.load_state_dict(torch.load("/Users/zimengjiang/code/3dv/ours/S2DHM-master/checkpoints/gnnet/24_model_best.pth.tar",\
+            map_location=torch.device(self._device)))
         self._feature_extractor.to(self._device)
         self._feature_extractor.eval()
         # print("successfully load gn net")
@@ -93,7 +92,6 @@ class ImageRetrievalModel():
     @gin.configurable
     def compute_embedding(self, images, image_size, preserve_ratio):
         """Compute global image descriptor.
-
         Args:
             images: A list of image filenames.
             image_size: The size of the images to use.
@@ -117,7 +115,6 @@ class ImageRetrievalModel():
     def compute_hypercolumn(self, image: List[str], image_size: List[int],
                             resize: bool, to_cpu: bool):
         """ Extract Multiple Layers and concatenate them as hypercolumns
-
         Args:
             image: A list of image paths.
             image_size: The maximum image size.
@@ -129,7 +126,6 @@ class ImageRetrievalModel():
         """
         # Pass list of image paths and compute descriptors
         with torch.no_grad():
-
             # Extract tensor from image
             feature_map = ImagesFromList.image_path_to_tensor(
                 image_paths=image,
@@ -143,7 +139,84 @@ class ImageRetrievalModel():
             # torch.Size([1, 16, 96, 128])
             # torch.Size([1, 16, 192, 256])
             # torch.Size([1, 16, 384, 512])
-            hypercolumn = self._feature_extractor.get_embedding(feature_map)[2]
+            # hypercolumn = self._feature_extractor.get_embedding(feature_map)[2]
+            # modified 
+            feature_maps = self._feature_extractor.get_embedding(feature_map)
+            # for i in range(len(hypercolumn)):
+            #     print(hypercolumn[i].shape)
+            # feature_maps, j = [], 0
+            # for i, layer in enumerate(list(self._model.encoder.children())):
+                # if(j==len(self._hypercolumn_layers)):
+            #         break
+            #     if(i==self._hypercolumn_layers[j]):
+            #         feature_maps.append(feature_map)
+            #         j+=1
+            #     feature_map = layer(feature_map)
+
+            # Final descriptor size (concat. intermediate features)
+            final_descriptor_size = sum([x.shape[1] for x in feature_maps])
+            b, c, w, h = feature_maps[-1].shape
+            hypercolumn = torch.zeros(
+                b, final_descriptor_size, w, h).to(self._device)
+
+            # # Upsample to the largest feature map size
+            start_index = 0
+            for j in range(len(feature_maps)):
+                descriptor_size = feature_maps[j].shape[1]
+                upsampled_map = interpolate(
+                    feature_maps[j], size=(w, h),
+                    mode='bilinear', align_corners=True)
+                hypercolumn[:, start_index:start_index + descriptor_size, :, :] = upsampled_map
+                start_index += descriptor_size
+
+            # Delete and empty cache
+            # del feature_maps, feature_map, upsampled_map
+            del feature_map, feature_maps
+            torch.cuda.empty_cache()
+
+        # Normalize descriptors
+        hypercolumn = hypercolumn / torch.norm(
+            hypercolumn, p=2, dim=1, keepdim=True)
+        if to_cpu:
+            hypercolumn = hypercolumn.cpu().data.numpy()
+        # print(hypercolumn.shape)
+        # print(image_resolution)
+        return hypercolumn, image_resolution
+
+    @property
+    def device(self):
+        return self._device
+
+    def compute_hypercolumn_lx(self, image: List[str], image_size: List[int],
+                            resize: bool, to_cpu: bool):
+        """ Extract Multiple Layers and concatenate them as hypercolumns
+        Args:
+            image: A list of image paths.
+            image_size: The maximum image size.
+            resize: Whether images should be resized when loaded.
+            to_cpu: Whether the resulting hypercolumns should be moved to cpu.
+        Returns:
+            hypercolumn: The extracted hypercolumn.
+            image_resolution: The image resolution used as input.
+        """
+        # Pass list of image paths and compute descriptors
+        with torch.no_grad():
+            # Extract tensor from image
+            feature_map = ImagesFromList.image_path_to_tensor(
+                image_paths=image,
+                image_size=image_size,
+                resize=resize,
+                device=self._device)
+            image_resolution = feature_map[0].shape[1:]
+            # original shape: 1x2048x96x128
+            # 4 resolutions:
+            # torch.Size([1, 16, 48, 64])
+            # torch.Size([1, 16, 96, 128])
+            # torch.Size([1, 16, 192, 256])
+            # torch.Size([1, 16, 384, 512])
+            # hypercolumn = self._feature_extractor.get_embedding(feature_map)[2]
+            # modified 
+            hypercolumn = self._feature_extractor.get_embedding(feature_map)[3]
             # for i in range(len(hypercolumn)):
             #     print(hypercolumn[i].shape)
             # feature_maps, j = [], 0
@@ -184,7 +257,3 @@ class ImageRetrievalModel():
         # print(hypercolumn.shape)
         # print(image_resolution)
         return hypercolumn, image_resolution
-
-    @property
-    def device(self):
-        return self._device

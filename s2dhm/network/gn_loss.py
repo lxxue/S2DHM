@@ -142,10 +142,8 @@ class GNLoss(nn.Module):
         2: B x C X H/4 x W/4
         3: B x C X H/2 x W/2
         4: B x C X H x W
-
         known_matches is the positive matches sampled by dataloader.
         {'a':BxNx2,'b':BxNx2}
-
         TODO: use for loop to check pair selector MyHardNegativePairSelector
         '''
         self.max_size_x = F_a[-1].shape[3]  # B x C x H x W
@@ -191,10 +189,8 @@ class GNLoss(nn.Module):
         2: B x C X H/4 x W/4
         3: B x C X H/2 x W/2
         4: B x C X H x W
-
         known_matches is the positive matches sampled by dataloader.
         {'a':BxNx2,'b':BxNx2}
-
         '''
         # for c in known_matches:
         #     c = {key: c[key].to(device) for key in c}

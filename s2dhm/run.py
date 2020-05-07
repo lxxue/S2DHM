@@ -22,6 +22,7 @@ parser.add_argument(
     default='sparse_to_dense')
 parser.add_argument('--log_images', action='store_true')
 parser.add_argument('--cmu_slice', type=int, default=2)
+parser.add_argument('--output_root')
 
 @gin.configurable
 def get_dataset_loader(dataset_loader_cls):

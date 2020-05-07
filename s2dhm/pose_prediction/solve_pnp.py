@@ -54,7 +54,8 @@ def solve_pnp(points_2D: np.ndarray,
             matrix=None,
             reference_filename=reference_filename,
             reference_keypoints=reference_keypoints)
-
+    
+    print('True inliers: ',len(inliers))
     if success and len(inliers) >= minimum_inliers:
         success, rvec, tvec = cv2.solvePnP(
             points_3D[np.squeeze(inliers)],

@@ -3,7 +3,7 @@ import pose_prediction.sparse_to_dense_predictor
 import pose_prediction.solve_pnp
 
 get_pose_predictor.pose_predictor_cls = @SparseToDensePredictor
-SparseToDensePredictor.top_N = 30
+SparseToDensePredictor.top_N = 1
 
 # PnP Parameters
 solve_pnp.reprojection_threshold = 12.0
@@ -11,6 +11,6 @@ solve_pnp.minimum_inliers = 12
 solve_pnp.minimum_matches = 5
 
 # Exhaustive search parameters
-exhaustive_search.factor = 0.006
+exhaustive_search.factor = 0.1
 
-SparseToDensePredictor.output_path = "/local/home/lixxue/S2DHM/results/features"
+SparseToDensePredictor.output_path = "/Users/zimengiang/code/3dv/ours/results/features"

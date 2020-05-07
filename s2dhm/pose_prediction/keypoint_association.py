@@ -3,6 +3,9 @@ import torch
 import numpy as np
 from typing import List
 
+# modified:
+cuda = torch.cuda.is_available()
+device = torch.device("cuda:0" if cuda else "cpu")
 
 def generate_dense_keypoints(feature_map_resolution: List[int],
                              image_resolution: List[int],
@@ -55,13 +58,13 @@ def fast_sparse_keypoint_descriptor(keypoints, dense_keypoints,
 
     # Sparse hypercolumn descriptors associated with the sparse keypoints
     sparse_descriptors = [torch.zeros(
-        (x.shape[1], channels)).cuda() for x in keypoints]
+        (x.shape[1], channels)).to(device) for x in keypoints]
 
     # Associate each detected keypoint with the nearest dense descriptor
     for i, kp in enumerate(keypoints):
         # Find closest points between detected keypoints and dense keypoints
         argmins = fast_closest_points(
-            torch.from_numpy(kp[:2,:]).cuda(), dense_keypoints)
+            torch.from_numpy(kp[:2,:]).to(device), dense_keypoints)
         for j in range(kp.shape[1]):
             sparse_descriptors[i][j, :] = dense_descriptors[i, :, argmins[j]]
     return sparse_descriptors
@@ -87,7 +90,7 @@ def fast_keypoint_matching(desc1, desc2, ratio_thresh, is_torch=False):
         cuda = torch.cuda.is_available()
         desc1, desc2 = torch.from_numpy(desc1), torch.from_numpy(desc2)
         if cuda:
-            desc1, desc2 = desc1.cuda(), desc2.cuda()
+            desc1, desc2 = desc1.to(device), desc2.to(device)
     with torch.no_grad():
         dist = 2*(1 - desc1 @ desc2.t())
         dist_nn, ind = dist.topk(2, dim=-1, largest=False)

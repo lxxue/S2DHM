@@ -9,9 +9,8 @@ CMU_SLICES = ['slice2', 'slice3', 'slice4', 'slice5',
               'slice14', 'slice15', 'slice16', 'slice17',
               'slice18', 'slice19', 'slice20', 'slice21',
               'slice22', 'slice23', 'slice24', 'slice25']
-# CMU_SLICES = ['slice2']
 
-ExtendedCMUDataset.root = '/local/home/lixxue/S2DHM/data/cmu_extended/'
+ExtendedCMUDataset.root = '/Users/zimengjiang/code/3dv/public_data/cmu/images/'
 ExtendedCMUDataset.image_folder = ''
 ExtendedCMUDataset.reference_sequences = %CMU_SLICES
 ExtendedCMUDataset.query_sequences = %CMU_SLICES

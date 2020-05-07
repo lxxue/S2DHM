@@ -14,6 +14,8 @@ from visualization import plot_correspondences
 from pathlib import Path
 import os
 
+cuda = torch.cuda.is_available()
+device = torch.device("cuda:0" if cuda else "cpu")
 
 @gin.configurable
 class SparseToDensePredictor(predictor.PosePredictor):
@@ -21,7 +23,6 @@ class SparseToDensePredictor(predictor.PosePredictor):
     """
     def __init__(self, top_N: int, output_path: str, **kwargs):
         """Initialize class attributes.
-
         Args:
             top_N: Number of nearest neighbors to consider in the
                 sparse-to-dense matching.
@@ -45,10 +46,10 @@ class SparseToDensePredictor(predictor.PosePredictor):
         dense_keypoints, cell_size = keypoint_association.generate_dense_keypoints(
             (reference_dense_hypercolumn.shape[2:]),
             Image.open(reference_image).size[::-1], to_numpy=True)
-        dense_keypoints = torch.from_numpy(dense_keypoints).cuda()
+        dense_keypoints = torch.from_numpy(dense_keypoints).to(device)
         reference_sparse_hypercolumns = \
             keypoint_association.fast_sparse_keypoint_descriptor(
-                [local_reconstruction.points_2D.T],
+                [local_reconstruction.points_2D.T], # here need to be adjusted to image resolution. 
                 dense_keypoints, reference_dense_hypercolumn)[0]
         return reference_sparse_hypercolumns, cell_size
 
@@ -111,6 +112,7 @@ class SparseToDensePredictor(predictor.PosePredictor):
 
             # Compute the query dense hypercolumn
             query_image = self._dataset.data['query_image_names'][i]
+            print(query_image.split('/')[-1])
             if query_image not in self._filename_to_intrinsics:
                 continue
             query_dense_hypercolumn, _ = self._network.compute_hypercolumn(
@@ -128,10 +130,8 @@ class SparseToDensePredictor(predictor.PosePredictor):
             #　output_filename = Path(parent, img_name)
             #　torch.save(query_dense_hypercolumn, output_filename.with_suffix('.pt'))
 
-
             for j in rank[:self._top_N]:
-
-                # Compute dense reference hypercolumns
+            # Compute dense reference hypercolumns
                 nearest_neighbor = self._dataset.data['reference_image_names'][j]
                 local_reconstruction = \
                     self._filename_to_local_reconstruction[nearest_neighbor]
@@ -163,7 +163,8 @@ class SparseToDensePredictor(predictor.PosePredictor):
                     reference_filename=nearest_neighbor,
                     reference_2D_points=local_reconstruction.points_2D[mask],
                     reference_keypoints=None)
-
+                
+                print("number of inliers: ", len(mask[mask==True]) )
                 # If PnP failed, fall back to nearest-neighbor prediction
                 if not prediction.success:
                     prediction = self._nearest_neighbor_prediction(
