@@ -38,8 +38,9 @@ class ImageRetrievalModel():
         self._device = device
         self._model = self._build_model()
         self._feature_extractor = GNNet(EmbeddingNet())
-        self._feature_extractor.load_state_dict(torch.load("/Users/zimengjiang/code/3dv/ours/S2DHM-master/checkpoints/gnnet/24_model_best.pth.tar",\
-            map_location=torch.device(self._device)))
+        # self._feature_extractor.load_state_dict(torch.load("/Users/zimengjiang/code/3dv/ours/S2DHM-master/checkpoints/gnnet/24_model_best.pth.tar",\
+        #     map_location=torch.device(self._device)))
+        self._feature_extractor.load_state_dict(torch.load("/local/home/lixxue/S2DHM/checkpoints/gnnet/24_model_best.pth.tar"))
         self._feature_extractor.to(self._device)
         self._feature_extractor.eval()
         # print("successfully load gn net")
@@ -142,6 +143,8 @@ class ImageRetrievalModel():
             # hypercolumn = self._feature_extractor.get_embedding(feature_map)[2]
             # modified 
             feature_maps = self._feature_extractor.get_embedding(feature_map)
+            # lixin: discard the last feature map with largest feature resolution due to memory problem
+            feature_maps = feature_maps[:-1]
             # for i in range(len(hypercolumn)):
             #     print(hypercolumn[i].shape)
             # feature_maps, j = [], 0

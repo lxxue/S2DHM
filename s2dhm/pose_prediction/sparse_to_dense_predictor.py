@@ -10,6 +10,8 @@ from pose_prediction import solve_pnp
 from pose_prediction import keypoint_association
 from pose_prediction import exhaustive_search
 from visualization import plot_correspondences
+from featurePnP import optimization
+from featurePnP import losses 
 
 from pathlib import Path
 import os
@@ -36,9 +38,12 @@ class SparseToDensePredictor(predictor.PosePredictor):
             self._dataset.data['filename_to_intrinsics']
         self._filename_to_local_reconstruction = \
             self._dataset.data['filename_to_local_reconstruction']
+        
+        self._featurePnP = optimization.FeaturePnP(iterations=1000, device=device, loss_fn=losses.squared_loss, lambda_=0.01, verbose=True) 
 
     def _compute_sparse_reference_hypercolumn(self, reference_image,
-                                              local_reconstruction):
+                                              local_reconstruction,
+                                              return_dense=False):
         """Compute hypercolumns at every visible 3D point reprojection."""
         reference_dense_hypercolumn, image_size = \
             self._network.compute_hypercolumn(
@@ -51,58 +56,13 @@ class SparseToDensePredictor(predictor.PosePredictor):
             keypoint_association.fast_sparse_keypoint_descriptor(
                 [local_reconstruction.points_2D.T], # here need to be adjusted to image resolution. 
                 dense_keypoints, reference_dense_hypercolumn)[0]
-        return reference_sparse_hypercolumns, cell_size
+        if return_dense:
+            return reference_sparse_hypercolumns, cell_size, reference_dense_hypercolumn
+        else:
+            return reference_sparse_hypercolumns, cell_size
 
     def run(self):
         """Run the sparse-to-dense pose predictor."""
-
-
-        # save query images' hypercolumn
-        # query_features = {}
-        # print(">> Computing query images' features")
-        # for i in tqdm(range(len(self._dataset.data['query_image_names']))):
-        #     query_image = self._dataset.data['query_image_names'][i]
-        #     if query_image not in self._filename_to_intrinsics:
-        #         continue
-        #     query_dense_hypercolumn, _ = self._network.compute_hypercolumn(
-        #         [query_image], to_cpu=True, resize=True)
-        #     query_dense_hypercolumn = query_dense_hypercolumn.squeeze()
-        #     # query_features[query_image] = query_dense_hypercolumn
-        #     query_slice = query_image.split("/")[-3]
-        #     img_name = query_image.split("/")[-1]
-        #     parent = Path(self._output_path, "query")
-        #     if not os.path.exists(parent):
-        #         os.makedirs(parent)
-        #     parent = Path(parent, query_slice)
-        #     if not os.path.exists(parent):
-        #         os.makedirs(parent)
-        #     output_filename = Path(parent, img_name)
-        #     torch.save(query_dense_hypercolumn, output_filename.with_suffix('.pt'))
-
-        # # query_slice = query_image.split("/")[-3]
-        # # torch.save(query_features, Path(self._output_path, "query_features_{}.pt".format(query_slice)))
-
-        # print(">> Computing reference images' features")
-        # #reference_features = {}
-        # for i in tqdm(range(len(self._dataset.data['reference_image_names']))):
-        #     reference_image = self._dataset.data['reference_image_names'][i]
-        #     reference_dense_hypercolumn, _ = self._network.compute_hypercolumn(
-        #         [reference_image], to_cpu=True, resize=True)
-        #     reference_dense_hypercolumn = reference_dense_hypercolumn.squeeze()
-        #     reference_slice = reference_image.split("/")[-3]
-        #     img_name = reference_image.split("/")[-1]
-        #     parent = Path(self._output_path, "reference")
-        #     if not os.path.exists(parent):
-        #         os.makedirs(parent)
-        #     parent = Path(parent, reference_slice)
-        #     if not os.path.exists(parent):
-        #         os.makedirs(parent)
-        #     output_filename = Path(parent, img_name)
-        #     torch.save(reference_dense_hypercolumn, output_filename.with_suffix('.pt'))
-
-            # reference_feature[reference_image] = reference_dense_hypercolumn
-        # torch.save(reference_features, Path(self._output_path, "reference_features_{}.pt".format(query_slice)))
-
 
         print('>> Generating pose predictions using sparse-to-dense matching...')
         output = []
@@ -118,26 +78,23 @@ class SparseToDensePredictor(predictor.PosePredictor):
             query_dense_hypercolumn, _ = self._network.compute_hypercolumn(
                 [query_image], to_cpu=False, resize=True)
             channels, width, height = query_dense_hypercolumn.shape[1:]
+            # lixin: used for featurePnP
+            query_dense_hypercolumn_copy = query_dense_hypercolumn.clone().detach()
             query_dense_hypercolumn = query_dense_hypercolumn.squeeze().view(
                 (channels, -1))
             predictions = []
-
-            ### save query_hypercolumn
-            # img_name = query_image.split("/")[-1]
-            # parent = Path(self._output_path, query_slice)
-            # if not os.path.exists(parent):
-            #     os.makedirs(parent)
-            #　output_filename = Path(parent, img_name)
-            #　torch.save(query_dense_hypercolumn, output_filename.with_suffix('.pt'))
 
             for j in rank[:self._top_N]:
             # Compute dense reference hypercolumns
                 nearest_neighbor = self._dataset.data['reference_image_names'][j]
                 local_reconstruction = \
                     self._filename_to_local_reconstruction[nearest_neighbor]
-                reference_sparse_hypercolumns, cell_size = \
+                reference_sparse_hypercolumns, cell_size, reference_dense_hypercolumn = \
                     self._compute_sparse_reference_hypercolumn(
-                        nearest_neighbor, local_reconstruction)
+                        nearest_neighbor, local_reconstruction, return_dense=True)
+                # lixin: get reference image's pose:
+                reference_prediction = self._nearest_neighbor_prediction(
+                        nearest_neighbor)
 
                 # Perform exhaustive search
                 matches_2D, mask = exhaustive_search.exhaustive_search(
@@ -154,7 +111,17 @@ class SparseToDensePredictor(predictor.PosePredictor):
                     local_reconstruction.points_3D[mask], (-1, 1, 3))
                 distortion_coefficients = \
                     local_reconstruction.distortion_coefficients
+                # Should use query's intrinsics?
+                query_intrinsics = self._filename_to_intrinsics[query_image] 
                 intrinsics = local_reconstruction.intrinsics
+                # print(query_intrinsics)
+                # print(intrinsics)
+                assert(np.allclose(query_intrinsics[0], intrinsics))
+                # check if distortion_coefficients always zero
+                # if use distortions in the query_intrinsics, should be always zero?
+                # print(len(self._filename_to_intrinsics))
+                # print(len(self._filename_to_local_reconstruction))
+                assert(np.allclose(distortion_coefficients, 0))
                 prediction = solve_pnp.solve_pnp(
                     points_2D=points_2D,
                     points_3D=points_3D,
@@ -163,6 +130,19 @@ class SparseToDensePredictor(predictor.PosePredictor):
                     reference_filename=nearest_neighbor,
                     reference_2D_points=local_reconstruction.points_2D[mask],
                     reference_keypoints=None)
+
+                # Perform feature-metric PnP
+                self._featurePnP(
+                    query_prediction=prediction, 
+                    reference_prediction=self._nearest_neighbor_prediction(nearest_neighbor), 
+                    local_reconstruction=local_reconstruction,
+                    mask=mask,
+                    query_dense_hypercolumn=query_dense_hypercolumn_copy, 
+                    reference_dense_hypercolumn=reference_dense_hypercolumn,
+                    query_intrinsics=query_intrinsics[0],
+                    size_ratio=cell_size[0], 
+                    R_gt=None, 
+                    t_gt=None)
                 
                 print("number of inliers: ", len(mask[mask==True]) )
                 # If PnP failed, fall back to nearest-neighbor prediction
