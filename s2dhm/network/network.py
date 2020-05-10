@@ -38,8 +38,9 @@ class ImageRetrievalModel():
         self._device = device
         self._model = self._build_model()
         self._feature_extractor = GNNet(EmbeddingNet())
-        self._feature_extractor.load_state_dict(torch.load("/Users/zimengjiang/code/3dv/ours/S2DHM/checkpoints/gnnet/24_model_best.pth.tar",\
-            map_location=torch.device(self._device)))
+        # self._feature_extractor.load_state_dict(torch.load("/Users/zimengjiang/code/3dv/ours/S2DHM/checkpoints/gnnet/24_model_best.pth.tar",\
+        #     map_location=torch.device(self._device)))
+        self._feature_extractor.load_state_dict(torch.load("/local/home/lixxue/S2DHM/checkpoints/gnnet/25_model_best.pth.tar"))
         self._feature_extractor.to(self._device)
         self._feature_extractor.eval()
         # print("successfully load gn net")

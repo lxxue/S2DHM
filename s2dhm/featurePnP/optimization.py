@@ -99,6 +99,22 @@ class FeaturePnP(nn.Module):
                 pts_3d_1 = pts_3d_0 @ R + t
                 pts_2d_1 = from_homogeneous(pts_3d_1 @ K1.T)
                 img1_idx = torch.floor(pts_2d_1 / size_ratio).type(torch.LongTensor).to(self.device)
+                # TODO: use mask instead of clamp here
+                if img1_idx.max(0)[0][0] > (imgf1.shape[2]-1):
+                    print("x out of boundary {} {}".format(img1_idx.max(0)[0][0].item(), imgf1.shape[2]-1))
+                if img1_idx.max(0)[0][1] > (imgf1.shape[1]-1):
+                    print("y out of boundary {} {}".format(img1_idx.max(0)[0][1].item(), imgf1.shape[1]-1))
+                if img1_idx.min(0)[0][0] < 0:
+                    print("x out of boundary {}".format(img1_idx.min(0)[0][0].item()))
+                if img1_idx.max(0)[0][1] > (imgf1.shape[2]-1):
+                    print("y out of boundary {}".format(img1_idx.min(0)[0][1].item()))
+
+                img1_idx[:, 0].clamp_max_(imgf1.shape[2]-1)
+                img1_idx[:, 1].clamp_max_(imgf1.shape[1]-1)
+                # print(img1_idx.min(0)[0])
+                # img1_idx might be slightly off the boundary
+                # print(img1_idx.max(0)[0])
+                # print(imgf1.shape)
                 extracted_feat1 = (imgf1[:, img1_idx[:, 1], img1_idx[:, 0]]).transpose(0, 1)
 
                 error = extracted_feat1 - extracted_feat0
@@ -152,6 +168,9 @@ class FeaturePnP(nn.Module):
                 new_pts_3d_1 = pts_3d_0 @ R_new.T + t_new
                 new_pts_2d_1 = from_homogeneous(new_pts_3d_1 @ K1.T)
                 new_img1_idx = torch.floor(new_pts_2d_1 / size_ratio).type(torch.LongTensor).to(self.device)
+                # TODO: use mask instead of clamp here
+                new_img1_idx[:, 0].clamp_max_(imgf1.shape[1])
+                new_img1_idx[:, 1].clamp_max_(imgf1.shape[0])
                 new_extracted_feat1 = (imgf1[:, new_img1_idx[:, 1], new_img1_idx[:, 0]]).transpose(0, 1)
             
 

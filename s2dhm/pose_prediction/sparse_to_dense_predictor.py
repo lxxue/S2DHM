@@ -39,7 +39,7 @@ class SparseToDensePredictor(predictor.PosePredictor):
         self._filename_to_local_reconstruction = \
             self._dataset.data['filename_to_local_reconstruction']
         
-        self._featurePnP = optimization.FeaturePnP(iterations=1000, device=device, loss_fn=losses.squared_loss, lambda_=0.01, verbose=True) 
+        self._featurePnP = optimization.FeaturePnP(iterations=1, device=device, loss_fn=losses.squared_loss, lambda_=0.01, verbose=False) 
 
     def _compute_sparse_reference_hypercolumn(self, reference_image,
                                               local_reconstruction,
@@ -58,13 +58,6 @@ class SparseToDensePredictor(predictor.PosePredictor):
         #         [local_reconstruction.points_2D.T], 
         #         dense_keypoints, reference_dense_hypercolumn)[0]
         reference_sparse_hypercolumns = \
-<<<<<<< HEAD
-            keypoint_association.my_fast_sparse_keypoint_descriptor(
-                [local_reconstruction.points_2D], 
-                dense_keypoints, reference_dense_hypercolumn, cell_size[0], cell_size[1])[0]
-
-        return reference_sparse_hypercolumns, cell_size
-=======
             keypoint_association.fast_sparse_keypoint_descriptor(
                 [local_reconstruction.points_2D.T], # here need to be adjusted to image resolution. 
                 dense_keypoints, reference_dense_hypercolumn)[0]
@@ -72,7 +65,6 @@ class SparseToDensePredictor(predictor.PosePredictor):
             return reference_sparse_hypercolumns, cell_size, reference_dense_hypercolumn
         else:
             return reference_sparse_hypercolumns, cell_size
->>>>>>> 26d1a5ec573cf560bba504774c91865299070ff8
 
     def run(self):
         """Run the sparse-to-dense pose predictor."""
@@ -85,7 +77,7 @@ class SparseToDensePredictor(predictor.PosePredictor):
 
             # Compute the query dense hypercolumn
             query_image = self._dataset.data['query_image_names'][i]
-            print(query_image.split('/')[-1])
+            # print(query_image.split('/')[-1])
             if query_image not in self._filename_to_intrinsics:
                 continue
             query_dense_hypercolumn, _= self._network.compute_hypercolumn(
@@ -102,11 +94,7 @@ class SparseToDensePredictor(predictor.PosePredictor):
                 nearest_neighbor = self._dataset.data['reference_image_names'][j]
                 local_reconstruction = \
                     self._filename_to_local_reconstruction[nearest_neighbor]
-<<<<<<< HEAD
-                reference_sparse_hypercolumns, cell_size= \
-=======
                 reference_sparse_hypercolumns, cell_size, reference_dense_hypercolumn = \
->>>>>>> 26d1a5ec573cf560bba504774c91865299070ff8
                     self._compute_sparse_reference_hypercolumn(
                         nearest_neighbor, local_reconstruction, return_dense=True)
                 # lixin: get reference image's pose:

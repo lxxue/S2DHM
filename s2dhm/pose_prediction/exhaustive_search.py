@@ -7,7 +7,7 @@ from typing import List
 ''' ratio test, might need to change ratio'''
 # def retrieve_argmax(correspondence_map, factor,ratio=0.9):
 def retrieve_argmax(correspondence_map, factor,ratio=0.95):
-    print("ratio: ", ratio, " factor: ", factor)
+    # print("ratio: ", ratio, " factor: ", factor)
     """Use a modified ratio test to obtain correspondences."""
     channels, width, height = correspondence_map.shape
     indices = torch.zeros((channels, 2))
