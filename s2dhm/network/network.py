@@ -38,7 +38,7 @@ class ImageRetrievalModel():
         self._device = device
         self._model = self._build_model()
         self._feature_extractor = GNNet(EmbeddingNet())
-        self._feature_extractor.load_state_dict(torch.load("/Users/zimengjiang/code/3dv/ours/S2DHM-master/checkpoints/gnnet/24_model_best.pth.tar",\
+        self._feature_extractor.load_state_dict(torch.load("/Users/zimengjiang/code/3dv/ours/S2DHM/checkpoints/gnnet/24_model_best.pth.tar",\
             map_location=torch.device(self._device)))
         self._feature_extractor.to(self._device)
         self._feature_extractor.eval()
@@ -141,7 +141,7 @@ class ImageRetrievalModel():
             # torch.Size([1, 16, 384, 512])
             # hypercolumn = self._feature_extractor.get_embedding(feature_map)[2]
             # modified 
-            feature_maps = self._feature_extractor.get_embedding(feature_map)
+            feature_maps = self._feature_extractor.get_embedding(feature_map)[:-1] # plan B, discard last feature due to memeory issue
             # for i in range(len(hypercolumn)):
             #     print(hypercolumn[i].shape)
             # feature_maps, j = [], 0
@@ -181,6 +181,7 @@ class ImageRetrievalModel():
             hypercolumn = hypercolumn.cpu().data.numpy()
         # print(hypercolumn.shape)
         # print(image_resolution)
+
         return hypercolumn, image_resolution
 
     @property

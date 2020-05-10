@@ -40,6 +40,44 @@ def generate_dense_keypoints(feature_map_resolution: List[int],
         keypoints = np.array(keypoints)
     return keypoints, (cell_size_x, cell_size_y)
 
+def my_fast_sparse_keypoint_descriptor(keypoints, dense_keypoints,
+                                    dense_descriptors, cell_size_x, cell_size_y):
+    """ Associate keypoints with their nearest hypercolumn descriptor.
+
+    Args:
+        keypoints: List of keypoints of size [B x N x 2]
+        dense_keypoints: Flattened dense keypoint grid of size [M x 2]
+        dense_descriptors: Dense descriptor map of size [B x C x W x H]
+    Returns:
+        sparse_descriptors: B set of descriptors fetched at the keypoints
+            locations.
+    """
+    # Flatten dense descriptors for faster matching
+    batch_size, channels, width, height = dense_descriptors.shape
+    # dense_descriptors = dense_descriptors.view(batch_size, channels, -1)
+
+    # Sparse hypercolumn descriptors associated with the sparse keypoints
+    sparse_descriptors = [torch.zeros(
+        (x.shape[0], channels)).to(device) for x in keypoints]
+    
+    for i, kp in enumerate(keypoints):
+        kp[:,0] = np.round(kp[:,0] / cell_size_y)  # cell_size_y
+        kp[:,1] = np.round(kp[:,1] / cell_size_x)  # cell_size_x
+        kp[:,0] = torch.clamp(torch.from_numpy(kp[:,0]), 0, height-1)
+        kp[:,1] = torch.clamp(torch.from_numpy(kp[:,1]), 0, width-1)
+        for j in range(kp.shape[0]):
+            sparse_descriptors[i][j, :] = dense_descriptors[i, :, int(kp[j,1]), int(kp[j,0])]
+
+
+    # Associate each detected keypoint with the nearest dense descriptor
+    # for i, kp in enumerate(keypoints):
+    #     # Find closest points between detected keypoints and dense keypoints
+    #     argmins = fast_closest_points(
+    #         torch.from_numpy(kp[:2,:]).to(device), dense_keypoints)
+    #     for j in range(kp.shape[1]):
+    #         sparse_descriptors[i][j, :] = dense_descriptors[i, :, argmins[j]]
+    return sparse_descriptors
+
 def fast_sparse_keypoint_descriptor(keypoints, dense_keypoints,
                                     dense_descriptors):
     """ Associate keypoints with their nearest hypercolumn descriptor.

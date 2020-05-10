@@ -31,7 +31,8 @@ def fetch_ranks(file_path: str,
     """Retrieve pre-computed image ranks."""
     # Load numpy file
     numpy_file = np.load(file_path)
-
+    # TODO: load .npz file and change the image directory to fit mine. 
+    # then sotre the file.
     # Check if reference and query images match the found images
     query_images = list(numpy_file['query_images'])
     reference_images = list(numpy_file['reference_images'])

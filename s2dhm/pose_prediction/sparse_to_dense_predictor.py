@@ -47,10 +47,16 @@ class SparseToDensePredictor(predictor.PosePredictor):
             (reference_dense_hypercolumn.shape[2:]),
             Image.open(reference_image).size[::-1], to_numpy=True)
         dense_keypoints = torch.from_numpy(dense_keypoints).to(device)
+        # the following code is memory demanding.
+        # reference_sparse_hypercolumns = \
+        #     keypoint_association.fast_sparse_keypoint_descriptor(
+        #         [local_reconstruction.points_2D.T], 
+        #         dense_keypoints, reference_dense_hypercolumn)[0]
         reference_sparse_hypercolumns = \
-            keypoint_association.fast_sparse_keypoint_descriptor(
-                [local_reconstruction.points_2D.T], # here need to be adjusted to image resolution. 
-                dense_keypoints, reference_dense_hypercolumn)[0]
+            keypoint_association.my_fast_sparse_keypoint_descriptor(
+                [local_reconstruction.points_2D], 
+                dense_keypoints, reference_dense_hypercolumn, cell_size[0], cell_size[1])[0]
+
         return reference_sparse_hypercolumns, cell_size
 
     def run(self):
@@ -115,7 +121,7 @@ class SparseToDensePredictor(predictor.PosePredictor):
             print(query_image.split('/')[-1])
             if query_image not in self._filename_to_intrinsics:
                 continue
-            query_dense_hypercolumn, _ = self._network.compute_hypercolumn(
+            query_dense_hypercolumn, _= self._network.compute_hypercolumn(
                 [query_image], to_cpu=False, resize=True)
             channels, width, height = query_dense_hypercolumn.shape[1:]
             query_dense_hypercolumn = query_dense_hypercolumn.squeeze().view(
@@ -135,9 +141,10 @@ class SparseToDensePredictor(predictor.PosePredictor):
                 nearest_neighbor = self._dataset.data['reference_image_names'][j]
                 local_reconstruction = \
                     self._filename_to_local_reconstruction[nearest_neighbor]
-                reference_sparse_hypercolumns, cell_size = \
+                reference_sparse_hypercolumns, cell_size= \
                     self._compute_sparse_reference_hypercolumn(
                         nearest_neighbor, local_reconstruction)
+
 
                 # Perform exhaustive search
                 matches_2D, mask = exhaustive_search.exhaustive_search(
@@ -173,6 +180,7 @@ class SparseToDensePredictor(predictor.PosePredictor):
                         predictions.append(prediction)
                 else:
                     predictions.append(prediction)
+                
 
             if len(predictions):
                 export, best_prediction = self._choose_best_prediction(
@@ -195,6 +203,33 @@ class SparseToDensePredictor(predictor.PosePredictor):
                         right_image_path=best_prediction.reference_filename,
                         title='Best match',
                         export_filename=self._dataset.output_converter(query_image))
+                    
+                    # visualize features
+                    best_ref_dense_hypercolumn, _= self._network.compute_hypercolumn(
+                        [best_prediction.reference_filename], to_cpu=False, resize=True)
+                    query_dense_hypercolumn, _= self._network.compute_hypercolumn(
+                        [query_image], to_cpu=False, resize=True)
+                    best_ref_dense_hypercolumn = best_ref_dense_hypercolumn.squeeze().view(
+                        (channels, -1))
+                    query_dense_hypercolumn = query_dense_hypercolumn.squeeze().view(
+                        (channels, -1))
+
+                    # ref = best_ref_dense_hypercolumn[0,48:,:,:]  
+                    # ref = ref.view((16, -1))
+                    # qry = query_dense_hypercolumn[0,48:,:,:] 
+                    # qry = qry.view((16, -1))
+                    
+                    
+                    plot_correspondences.plot_feature_pca(
+                        left_image_path=query_image,
+                        right_image_path=best_prediction.reference_filename,
+                        title='Best match feature visualization',
+                        export_filename=self._dataset.output_converter(query_image),
+                        left_features = query_dense_hypercolumn,
+                        right_features = best_ref_dense_hypercolumn,
+                        H = width,
+                        W = height) # h and w are flipped in s2d code
+
 
                 output.append(export)
                 tqdm_bar.set_description(

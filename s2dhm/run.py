@@ -60,7 +60,9 @@ def bind_cmu_parameters(cmu_slice, mode):
         gin.bind_parameter('plot_correspondences.plot_correspondences.export_folder',
             '../logs/sparse_to_dense/correspondences/cmu/slice_{}/'.format(cmu_slice))
         gin.bind_parameter('plot_correspondences.plot_image_retrieval.export_folder',
-            '../logs/sparse_to_dense/nearest_neighbor/cmu/slice_{}/'.format(cmu_slice))
+            '../logs/sparse_to_dense/nearest_neighbor/cmu/slice_{}/'.format(cmu_slice)),
+        gin.bind_parameter('plot_correspondences.plot_feature_pca.export_folder',
+            '../logs/sparse_to_dense/feature_visualization/cmu/slice_{}/'.format(cmu_slice))
 
 def main(args):
     # Define visible GPU devices
@@ -94,6 +96,7 @@ def main(args):
                                         ranks=ranks,
                                         log_images=args.log_images)
     pose_predictor.save(pose_predictor.run())
+    print("All ranks computed.")
 
 if __name__ == '__main__':
     args = parser.parse_args()
