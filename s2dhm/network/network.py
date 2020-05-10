@@ -141,7 +141,9 @@ class ImageRetrievalModel():
             # torch.Size([1, 16, 384, 512])
             # hypercolumn = self._feature_extractor.get_embedding(feature_map)[2]
             # modified 
-            feature_maps = self._feature_extractor.get_embedding(feature_map)[:-1] # plan B, discard last feature due to memeory issue
+            feature_maps = self._feature_extractor.get_embedding(feature_map)
+            # lixin: discard the last feature map with largest feature resolution due to memory problem
+            feature_maps = feature_maps[:-1]
             # for i in range(len(hypercolumn)):
             #     print(hypercolumn[i].shape)
             # feature_maps, j = [], 0
