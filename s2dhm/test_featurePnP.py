@@ -58,6 +58,7 @@ if __name__ == "__main__":
     pts0 = pts2d[img_idx0]
     pts1 = pts2d[img_idx1]
     z0_gt = depths[img_idx0]
+    pts3d0 = to_homogeneous(pts0) * z0_gt[..., None]
     relative_pose = np.matmul(poses[img_idx1], np.linalg.inv(poses[img_idx0]))
     R_gt = torch.from_numpy(relative_pose[:3, :3]).type(torch.float32)
     t_gt = torch.from_numpy(relative_pose[:3, 3]).type(torch.float32)
@@ -83,6 +84,10 @@ if __name__ == "__main__":
     proj_1 = np.concatenate([proj_1, np.zeros((1,4))], axis=0)
     proj_1[3, 3] = 1
     relative_pose_init = np.matmul(proj_1, np.linalg.inv(proj_0))
+
+    # print(from_homogeneous(to_homogeneous(pts3d0) @ np.linalg.inv(proj_0.T) @ proj_0.T))
+    # print(pts3d)
+    pts3d = from_homogeneous(to_homogeneous(pts3d0) @ np.linalg.inv(proj_0.T))
 
     R_init = torch.from_numpy(relative_pose_init[:3, :3]).type(torch.float32)
     t_init = torch.from_numpy(relative_pose_init[:3, 3]).type(torch.float32)
