@@ -106,11 +106,11 @@ class FeaturePnP(nn.Module):
                 #     print("y out of boundary {} {}".format(img1_idx.max(0)[0][1].item(), imgf1.shape[1]-1))
                 # if img1_idx.min(0)[0][0] < 0:
                 #     print("x out of boundary {}".format(img1_idx.min(0)[0][0].item()))
-                # if img1_idx.max(0)[0][1] > (imgf1.shape[2]-1):
+                # if img1_idx.min(0)[0][1] < 0:
                 #     print("y out of boundary {}".format(img1_idx.min(0)[0][1].item()))
 
-                img1_idx[:, 0].clamp_max_(imgf1.shape[2]-1)
-                img1_idx[:, 1].clamp_max_(imgf1.shape[1]-1)
+                img1_idx[:, 0].clamp_(0, imgf1.shape[2]-1)
+                img1_idx[:, 1].clamp_(0, imgf1.shape[1]-1)
                 # print(img1_idx.min(0)[0])
                 # img1_idx might be slightly off the boundary
                 # print(img1_idx.max(0)[0])
@@ -123,7 +123,7 @@ class FeaturePnP(nn.Module):
                 cost, weights, _ = scaled_loss(cost, self.loss_fn, scale)
                 if i == 0:
                     prev_cost = cost.mean(-1)
-                if self.verbose:
+                if self.verbose and i % 9 == 0:
                     print('Iter ', i, cost.mean().item())
 
                 # calculate gradient for LM
@@ -169,8 +169,16 @@ class FeaturePnP(nn.Module):
                 new_pts_2d_1 = from_homogeneous(new_pts_3d_1 @ K1.T)
                 new_img1_idx = torch.floor(new_pts_2d_1 / size_ratio).type(torch.LongTensor).to(self.device)
                 # TODO: use mask instead of clamp here
-                # new_img1_idx[:, 0].clamp_max_(imgf1.shape[2]-1)
-                # new_img1_idx[:, 1].clamp_max_(imgf1.shape[1]-1)
+                # if new_img1_idx.max(0)[0][0] > (imgf1.shape[2]-1):
+                #     print("x out of boundary {} {}".format(new_img1_idx.max(0)[0][0].item(), imgf1.shape[2]-1))
+                # if new_img1_idx.max(0)[0][1] > (imgf1.shape[1]-1):
+                #     print("y out of boundary {} {}".format(new_img1_idx.max(0)[0][1].item(), imgf1.shape[1]-1))
+                # if new_img1_idx.min(0)[0][0] < 0:
+                #     print("x out of boundary {}".format(new_img1_idx.min(0)[0][0].item()))
+                # if new_img1_idx.min(0)[0][1] < 0:
+                #     print("y out of boundary {}".format(new_img1_idx.min(0)[0][1].item()))
+                new_img1_idx[:, 0].clamp_(0, imgf1.shape[2]-1)
+                new_img1_idx[:, 1].clamp_(0, imgf1.shape[1]-1)
                 new_extracted_feat1 = (imgf1[:, new_img1_idx[:, 1], new_img1_idx[:, 0]]).transpose(0, 1)
             
 
@@ -180,7 +188,6 @@ class FeaturePnP(nn.Module):
 
                 lambda_ = np.clip(lambda_ * (10 if new_cost > prev_cost else 1/10),
                                   1e-5, 1e3)
-                print(lambda_)
                 if new_cost > prev_cost:  # cost increased
                     continue
                 prev_cost = new_cost

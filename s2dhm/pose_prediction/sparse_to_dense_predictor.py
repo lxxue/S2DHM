@@ -39,7 +39,7 @@ class SparseToDensePredictor(predictor.PosePredictor):
         self._filename_to_local_reconstruction = \
             self._dataset.data['filename_to_local_reconstruction']
         
-        self._featurePnP = optimization.FeaturePnP(iterations=1, device=device, loss_fn=losses.squared_loss, lambda_=0.01, verbose=False) 
+        self._featurePnP = optimization.FeaturePnP(iterations=100, device=device, loss_fn=losses.squared_loss, lambda_=100, verbose=True) 
 
     def _compute_sparse_reference_hypercolumn(self, reference_image,
                                               local_reconstruction,
