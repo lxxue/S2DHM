@@ -29,7 +29,7 @@ def optimizer_step(g, H, lambda_=0):
     return delta
 
 class FeaturePnP(nn.Module):
-    def __init__(self, iterations, device, loss_fn=squared_loss, lambda_=0.01, verbose=False):
+    def __init__(self, iterations, device, loss_fn=squared_loss, lambda_=100, verbose=False):
         super().__init__()
         self.iterations = iterations
         self.device = device
@@ -65,7 +65,7 @@ class FeaturePnP(nn.Module):
             # relative_matrix = q_matrix_inv @ r_matrix
 
             R_init = relative_matrix[:3, :3]
-            t_init = relative_matrix[3, :3]
+            t_init = relative_matrix[:3, 3]
             imgf0 = reference_dense_hypercolumn
             imgf1 = query_dense_hypercolumn
             imgf1_gx, imgf1_gy = sobel_filter(imgf1) 
@@ -96,18 +96,18 @@ class FeaturePnP(nn.Module):
             scale = torch.ones((pts_2d_0.shape[0],)).type(torch.FloatTensor).to(self.device)
             # TODO: add early stop for LM
             for i in range(self.iterations):
-                pts_3d_1 = pts_3d_0 @ R + t
+                pts_3d_1 = pts_3d_0 @ R.T + t
                 pts_2d_1 = from_homogeneous(pts_3d_1 @ K1.T)
                 img1_idx = torch.floor(pts_2d_1 / size_ratio).type(torch.LongTensor).to(self.device)
                 # TODO: use mask instead of clamp here
-                if img1_idx.max(0)[0][0] > (imgf1.shape[2]-1):
-                    print("x out of boundary {} {}".format(img1_idx.max(0)[0][0].item(), imgf1.shape[2]-1))
-                if img1_idx.max(0)[0][1] > (imgf1.shape[1]-1):
-                    print("y out of boundary {} {}".format(img1_idx.max(0)[0][1].item(), imgf1.shape[1]-1))
-                if img1_idx.min(0)[0][0] < 0:
-                    print("x out of boundary {}".format(img1_idx.min(0)[0][0].item()))
-                if img1_idx.max(0)[0][1] > (imgf1.shape[2]-1):
-                    print("y out of boundary {}".format(img1_idx.min(0)[0][1].item()))
+                # if img1_idx.max(0)[0][0] > (imgf1.shape[2]-1):
+                #     print("x out of boundary {} {}".format(img1_idx.max(0)[0][0].item(), imgf1.shape[2]-1))
+                # if img1_idx.max(0)[0][1] > (imgf1.shape[1]-1):
+                #     print("y out of boundary {} {}".format(img1_idx.max(0)[0][1].item(), imgf1.shape[1]-1))
+                # if img1_idx.min(0)[0][0] < 0:
+                #     print("x out of boundary {}".format(img1_idx.min(0)[0][0].item()))
+                # if img1_idx.max(0)[0][1] > (imgf1.shape[2]-1):
+                #     print("y out of boundary {}".format(img1_idx.min(0)[0][1].item()))
 
                 img1_idx[:, 0].clamp_max_(imgf1.shape[2]-1)
                 img1_idx[:, 1].clamp_max_(imgf1.shape[1]-1)
@@ -169,8 +169,8 @@ class FeaturePnP(nn.Module):
                 new_pts_2d_1 = from_homogeneous(new_pts_3d_1 @ K1.T)
                 new_img1_idx = torch.floor(new_pts_2d_1 / size_ratio).type(torch.LongTensor).to(self.device)
                 # TODO: use mask instead of clamp here
-                new_img1_idx[:, 0].clamp_max_(imgf1.shape[1])
-                new_img1_idx[:, 1].clamp_max_(imgf1.shape[0])
+                # new_img1_idx[:, 0].clamp_max_(imgf1.shape[2]-1)
+                # new_img1_idx[:, 1].clamp_max_(imgf1.shape[1]-1)
                 new_extracted_feat1 = (imgf1[:, new_img1_idx[:, 1], new_img1_idx[:, 0]]).transpose(0, 1)
             
 
@@ -179,7 +179,8 @@ class FeaturePnP(nn.Module):
                 new_cost = scaled_loss(new_cost, self.loss_fn, scale)[0].mean()
 
                 lambda_ = np.clip(lambda_ * (10 if new_cost > prev_cost else 1/10),
-                                  1e-6, 1e2)
+                                  1e-5, 1e3)
+                print(lambda_)
                 if new_cost > prev_cost:  # cost increased
                     continue
                 prev_cost = new_cost
@@ -187,8 +188,8 @@ class FeaturePnP(nn.Module):
 
                 if R_gt is not None and t_gt is not None:
                     if self.verbose:
-                        gt_error = pose_error(R, t, R_gt, t_gt)
-                        print('Pose error:', *gt_error)
+                        r_error, t_error = pose_error(R, t, R_gt, t_gt)
+                        print('Pose error:', r_error.cpu().numpy(), t_error.cpu().numpy())
             return R, t
 
 class dotdict(dict):

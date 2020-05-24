@@ -9,6 +9,7 @@ from featurePnP.optimization import FeaturePnP
 import scipy
 import imageio
 from scipy.ndimage import gaussian_filter
+from matplotlib import pyplot as plt
 
 class dotdict(dict):
     """dot.notation access to dictionary attributes"""
@@ -39,7 +40,7 @@ def keypoints2example(img_idx0):
     return torch.from_numpy(new_img.transpose((2,0,1)) * 255)[None, ...]
 
 if __name__ == "__main__":
-    model = FeaturePnP(iterations=100, device=torch.device('cuda:0'), loss_fn=squared_loss, lambda_=0.01, verbose=True)
+    model = FeaturePnP(iterations=50, device=torch.device('cuda:0'), loss_fn=squared_loss, lambda_=100, verbose=True)
 
     poses = scipy.io.loadmat('data/checkerboard/poses.mat')['poses']
     poses = np.concatenate((poses, np.zeros((210, 1, 4))), axis=1)
@@ -51,7 +52,7 @@ if __name__ == "__main__":
     # img_idx0 = np.random.randint(len(poses))
     # img_idx1 = np.random.randint(len(poses))
     img_idx0 = 0
-    img_idx1 = 1
+    img_idx1 = 195
     assert img_idx0 != img_idx1
 
     pts0 = pts2d[img_idx0]
@@ -87,19 +88,27 @@ if __name__ == "__main__":
     t_init = torch.from_numpy(relative_pose_init[:3, 3]).type(torch.float32)
     
 
-    dr = so3exp_map(torch.from_numpy(np.random.randn(3)).type(torch.float32) * 0.01)
-    dt = torch.from_numpy(np.random.randn(3)).type(torch.float32) * 0.01
+    rnd1 = np.array([0.24581696, 0.42776546, 0.00600544])
+    rnd2 = np.array([ 0.62033623, -0.25213616, -0.54241641])
+    dr = so3exp_map(torch.from_numpy(rnd1).type(torch.float32) * 0.01)
+    dt = torch.from_numpy(rnd2).type(torch.float32) * 0.01
+    # dr = so3exp_map(torch.from_numpy(np.random.randn(3)).type(torch.float32) * 0.01)
+    # dt = torch.from_numpy(np.random.randn(3)).type(torch.float32) * 0.01
     proj_1_rnd = np.zeros((4, 4))
     proj_1_rnd[3, 3] = 1
     proj_1_rnd[:3, :3] = dr.numpy() @ proj_1[:3, :3]
     proj_1_rnd[:3, 3] = dr.numpy() @ proj_1[:3, 3] + dt.numpy()
-    R_init_rnd = dr @ R_gt
-    t_init_rnd = dr @ t_gt + dt
+    # print(proj_1)
+    # print(proj_1_rnd)
+    R_init_rnd = dr @ R_init
+    t_init_rnd = dr @ t_init + dt
     # R_opt_init, t_opt_init = model(pts0, R_init, t_init, imgf0, imgf1, img1gx, img1gy, K, K, scale=scale, z0_gt=z0_gt, R_gt=R_gt, t_gt=t_gt, size_ratio=1)
     # R_opt_rnd, t_opt_rnd = model(pts0, R_init_rnd, t_init_rnd, imgf0, imgf1, img1gx, img1gy, K, K, scale=scale, z0_gt=z0_gt, R_gt=R_gt, t_gt=t_gt, size_ratio=1)
 
     # query_prediction = {'matrix': poses[img_idx1]}
     # reference_prediction = {'matrix': poses[img_idx0]}
+    # reference_prediction = {'matrix': proj_0}
+    # query_prediction = {'matrix': proj_1}
     reference_prediction = {'matrix': proj_0}
     query_prediction = {'matrix': proj_1}
     local_reconstruction = {
@@ -123,8 +132,8 @@ if __name__ == "__main__":
                 reference_dense_hypercolumn,
                 query_intrinsics, 
                 size_ratio,
-                R_gt=R_gt, 
-                t_gt=t_gt)
+                R_gt=R_gt.cuda(), 
+                t_gt=t_gt.cuda())
 
     
     query_prediction = {'matrix': proj_1_rnd}
@@ -137,8 +146,8 @@ if __name__ == "__main__":
                 reference_dense_hypercolumn,
                 query_intrinsics, 
                 size_ratio,
-                R_gt=R_gt, 
-                t_gt=t_gt)
+                R_gt=R_gt.cuda(), 
+                t_gt=t_gt.cuda())
 
     R_opt_init = R_opt_init.cpu()
     t_opt_init = t_opt_init.cpu()
