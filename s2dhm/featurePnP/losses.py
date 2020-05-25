@@ -4,6 +4,7 @@ Generic losses and error functions for optimization or training deep networks.
 
 import torch
 import math
+import numpy as np
 
 from featurePnP.utils import to_homogeneous, from_homogeneous
 
@@ -113,3 +114,24 @@ def pose_error(R1, t1, R2, t2):
     cos = torch.clamp((trace - 1) / 2, -1, 1)
     dr = torch.acos(cos).abs() / math.pi * 180
     return dr, dt
+
+def pose_error_np(R1, t1, R2, t2):
+    """Compute the rotation and translation errors of a batch of poses.
+    Args:
+        R1, t1: rotation matri and translation vector of camera 1.
+        R2, t2: same for camera 2.
+    Returns:
+        A tuple of rotation (in deg) and translation errors.
+    """
+    dt = np.linalg.norm(t1 - t2, axis=-1)
+    trace = np.diagonal(R1.transpose(-1, -2) @ R2, axis1=-1, axis2=-2).sum(-1)
+    cos = np.clip((trace - 1) / 2, -1, 1)
+    dr = np.abs(np.arccos(cos)) / math.pi * 180
+    return dr, dt
+
+def pose_error_mat(mat1, mat2):
+    R1 = mat1[:3, :3]
+    t1 = mat1[:3, 3]
+    R2 = mat2[:3, :3]
+    t2 = mat2[:3, 3]
+    return pose_error_np(R1, t1, R2, t2)
