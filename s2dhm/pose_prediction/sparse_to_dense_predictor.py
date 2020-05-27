@@ -234,7 +234,7 @@ class SparseToDensePredictor(predictor.PosePredictor):
             for j in rank[:self._top_N]:
                 
                 # Compute dense reference hypercolumns
-                nearest_neighbor = self._dataset.data['tiny_reference_image_names'][j]
+                nearest_neighbor = self._dataset.data['reference_image_names'][j]
                 local_reconstruction = \
                     self._filename_to_local_reconstruction[nearest_neighbor]
                 reference_sparse_hypercolumns, cell_size, reference_dense_hypercolumn = \

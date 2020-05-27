@@ -4,12 +4,42 @@ from torch import nn
 
 from featurePnP.utils import (to_homogeneous, from_homogeneous, batched_eye_like,
                     skew_symmetric, so3exp_map, sobel_filter)
-from featurePnP.losses import scaled_loss, squared_loss, pose_error
+from featurePnP.losses import scaled_loss, squared_loss, pose_error, pose_error_np
 from featurePnP.optimization import FeaturePnP
 import scipy
 import imageio
 from scipy.ndimage import gaussian_filter
 from matplotlib import pyplot as plt
+from scipy import io
+from visualization import plot_correspondences
+from pose_prediction import keypoint_association
+import gin
+from network import network
+import os
+from pose_prediction import predictor
+from datasets import base_dataset
+from datasets.cmu_dataset import ExtendedCMUDataset
+from pose_prediction.sparse_to_dense_predictor import SparseToDensePredictor
+from pose_prediction.matrix_utils import quaternion_matrix
+from image_retrieval import rank_images
+from pose_prediction import exhaustive_search
+from PIL import Image
+from pose_prediction import solve_pnp
+
+@gin.configurable
+def get_dataset_loader(dataset_loader_cls):
+    return dataset_loader_cls
+
+@gin.configurable
+def get_pose_predictor(pose_predictor_cls: predictor.PosePredictor,
+                       dataset: base_dataset.BaseDataset,
+                       network: network.ImageRetrievalModel,
+                       ranks: np.ndarray,
+                       log_images: bool):
+    return pose_predictor_cls(dataset=dataset,
+                              network=network,
+                              ranks=ranks,
+                              log_images=log_images)
 
 class dotdict(dict):
     """dot.notation access to dictionary attributes"""
@@ -39,7 +69,8 @@ def keypoints2example(img_idx0):
     # print(new_img.shape)
     return torch.from_numpy(new_img.transpose((2,0,1)) * 255)[None, ...]
 
-if __name__ == "__main__":
+
+def test_toy_example():
     model = FeaturePnP(iterations=50, device=torch.device('cuda:0'), loss_fn=squared_loss, lambda_=100, verbose=True)
 
     poses = scipy.io.loadmat('data/checkerboard/poses.mat')['poses']
@@ -166,3 +197,141 @@ if __name__ == "__main__":
     print(pose_error(R_init_rnd, t_init_rnd, R_gt, t_gt))
     print("optimized random pose error")
     print(pose_error(R_opt_rnd, t_opt_rnd, R_gt, t_gt))
+
+def bind_cmu_parameters(cmu_slice, mode):
+    """Update CMU gin parameters to match chosen slice."""
+    gin.bind_parameter('ExtendedCMUDataset.cmu_slice', cmu_slice)
+    if mode=='nearest_neighbor':
+        gin.bind_parameter('NearestNeighborPredictor.output_filename',
+            '../results/cmu/slice_{}/top_1_predictions.txt'.format(cmu_slice))
+    elif mode=='superpoint':
+        gin.bind_parameter('SuperPointPredictor.output_filename',
+            '../results/cmu/slice_{}/superpoint_predictions.txt'.format(cmu_slice))
+        gin.bind_parameter('plot_correspondences.plot_correspondences.export_folder',
+            '../logs/superpoint/correspondences/cmu/slice_{}/'.format(cmu_slice))
+        gin.bind_parameter('plot_correspondences.plot_detections.export_folder',
+            '../logs/superpoint/detections/cmu/slice_{}/'.format(cmu_slice))
+        gin.bind_parameter('plot_correspondences.plot_image_retrieval.export_folder',
+            '../logs/superpoint/nearest_neighbor/cmu/slice_{}/'.format(cmu_slice))
+    elif mode=='sparse_to_dense':
+        gin.bind_parameter('SparseToDensePredictor.output_filename',
+            '../results/cmu/slice_{}/sparse_to_dense_predictions.txt'.format(cmu_slice))
+        gin.bind_parameter('plot_correspondences.plot_correspondences.export_folder',
+            '../logs/sparse_to_dense/correspondences/cmu/slice_{}/'.format(cmu_slice))
+        gin.bind_parameter('plot_correspondences.plot_image_retrieval.export_folder',
+            '../logs/sparse_to_dense/nearest_neighbor/cmu/slice_{}/'.format(cmu_slice)),
+        gin.bind_parameter('plot_correspondences.plot_feature_pca.export_folder',
+            '../logs/sparse_to_dense/feature_visualization/cmu/slice_{}/'.format(cmu_slice))
+
+def test_cmu_images():
+    cmu_root = "/local/home/lixxue/S2DHM/data/cmu_extended/"
+    query_image = os.path.join(cmu_root, "slice6", "query", "img_04210_c1_1283348121556806us.jpg")
+    R_gt = quaternion_matrix([0.071491, 0.000635, -0.712314, 0.698210])[:3, :3]
+    t_gt = np.array([231.068248, -30.488086, 22.226670])
+    
+
+
+    bind_cmu_parameters(6, 'sparse_to_dense') 
+    device = torch.device('cuda' if torch.cuda.is_available() else "cpu")
+    gin.parse_config_file("configs/runs/run_sparse_to_dense_on_cmu.gin")
+    dataset = get_dataset_loader()
+    net = network.ImageRetrievalModel(device=device)
+    ranks = rank_images.fetch_or_compute_ranks(dataset, net).T
+    pose_predictor = get_pose_predictor(dataset=dataset,
+                                        network=net,
+                                        ranks=ranks,
+                                        log_images=True)
+    # print(dataset.data['query_image_names'])
+
+    query_idx = dataset.data['query_image_names'].index(query_image)
+    query_dense_hypercolumn, _ = net.compute_hypercolumn([query_image], to_cpu=False, resize=True)
+    channels, width, height = query_dense_hypercolumn.shape[1:]
+    query_dense_hypercolumn = query_dense_hypercolumn.squeeze().view(
+        (channels, -1))
+    nn_idx = ranks[query_idx][0]
+    nearest_neighbor = dataset.data['reference_image_names'][nn_idx]
+    local_reconstruction = \
+        dataset.data['filename_to_local_reconstruction'][nearest_neighbor]
+    reference_sparse_hypercolumns, cell_size, reference_dense_hypercolumn = \
+        pose_predictor._compute_sparse_reference_hypercolumn(
+        nearest_neighbor, local_reconstruction, return_dense=True)
+    reference_prediction = pose_predictor._nearest_neighbor_prediction(
+        nearest_neighbor)
+
+
+    print(query_dense_hypercolumn.shape)
+    print(reference_sparse_hypercolumns.shape)
+    matches_2D, mask = exhaustive_search.exhaustive_search(
+        query_dense_hypercolumn,
+        reference_sparse_hypercolumns,
+        Image.open(nearest_neighbor).size[::-1],
+        [width, height],
+        cell_size)
+
+    points_2D = np.reshape(
+        matches_2D.cpu().numpy()[mask], (-1, 1, 2))
+    points_3D = np.reshape(
+        local_reconstruction.points_3D[mask], (-1, 1, 3))
+    distortion_coefficients = \
+        local_reconstruction.distortion_coefficients
+    
+    # query_intrinsics, distortion_coefficients = pose_predictor._filename_to_intrinsics[query_image] 
+    prediction = solve_pnp.solve_pnp(
+        points_2D=points_2D,
+        points_3D=points_3D,
+        intrinsics=local_reconstruction.intrinsics,
+        distortion_coefficients=local_reconstruction.distortion_coefficients,
+        reference_filename=nearest_neighbor,
+        reference_2D_points=local_reconstruction.points_2D[mask],
+        reference_keypoints=None)
+    
+    R_pred = prediction.matrix[:3, :3]
+    t_pred = prediction.matrix[:3, 3]
+
+    print(R_gt.shape, t_gt.shape)
+    print(R_pred.shape, t_pred.shape)
+    print(pose_error_np(R_gt, t_gt, R_pred, t_pred))
+
+    # nearest_neighbor = dataset.datalocal/home/lixxue/S2DHM/data/ranks/cmu
+    '''
+    fnames = os.listdir(cmu_root+'gt')
+    np.random.seed(1)
+    # fname_idx = np.random.choice(len(fnames), 1)
+    fname_idx = [0]
+    fname = fnames[fname_idx[0]]
+    print(fname)
+    slice_idx = fname.split('/')[-1].split('_')[1]
+    mat = io.loadmat(cmu_root + "gt/" + fname)
+    # with open("/local/home/lixxue/Downloads/gn_net_data/cmu/images/slice11/camera-poses/slice-11-gt-query-images.txt") as f:
+
+    im_i_path = cmu_root + 'images/' + mat['im_i_path'][0]
+    im_j_path = cmu_root + 'images/' + mat['im_j_path'][0]
+    im_i_path = os.path.join(cmu_root, 'images', slice_idx, 'query', os.path.split(im_i_path)[1])
+    im_j_path = os.path.join(cmu_root, 'images', slice_idx, 'query', os.path.split(im_j_path)[1])
+    im_i = imageio.imread(im_i_path)
+    im_j = imageio.imread(im_j_path)
+    pt_i = mat['pt_i'].transpose()
+    pt_j = mat['pt_j'].transpose()
+    pt_i_cv2 = keypoint_association.kpt_to_cv2(pt_i)
+    pt_j_cv2 = keypoint_association.kpt_to_cv2(pt_j)
+    matches = np.arange(0, len(pt_i))
+    matches = np.stack([matches, matches], axis=-1)
+    matches_idx = np.random.choice(len(matches), 50)
+    print(matches_idx)
+    matches = matches[matches_idx]
+    plot_correspondences.plot_correspondences(im_i_path, 
+        im_j_path, pt_i_cv2, pt_j_cv2, matches,
+        title=mat['im_i_path'][0]+' vs '+mat['im_j_path'][0],
+        export_folder='/local/home/lixxue/S2DHM/s2dhm/test/',
+        export_filename='test.jpg')
+
+    
+    bind_cmu_parameters(11, 'sparse_to_dense') 
+    device = torch.device('cuda' if torch.cuda.is_available() else "cpu")
+    gin.parse_config_file("configs/runs/run_sparse_to_dense_on_cmu.gin")
+    dataset = get_dataset_loader()
+    net = network.ImageRetrievalModel(device=device)
+    '''    
+
+if __name__ == "__main__":
+    test_cmu_images()
