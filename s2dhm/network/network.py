@@ -37,13 +37,13 @@ class ImageRetrievalModel():
         self._hypercolumn_layers = hypercolumn_layers
         self._device = device
         self._model = self._build_model()
-        # self._feature_extractor = GNNet(EmbeddingNet())
-        # self._feature_extractor.load_state_dict(torch.load("/Users/zimengjiang/code/3dv/ours/S2DHM/checkpoints/gnnet/24_model_best.pth.tar",\
-        #     map_location=torch.device(self._device)))
+        self._feature_extractor = GNNet(EmbeddingNet(bilinear=False, nearest=True))
+        self._feature_extractor.load_state_dict(torch.load("/local/home/lixxue/S2DHM/checkpoints/robotcar/50_model_best.pth.tar"))
+            # map_location=torch.device(self._device)))
         # self._feature_extractor.load_state_dict(torch.load("/local/home/lixxue/S2DHM/checkpoints/gnnet/25_model_best.pth.tar"))
-        # self._feature_extractor.to(self._device)
-        # self._feature_extractor.eval()
-        # print("successfully load gn net")
+        self._feature_extractor.to(self._device)
+        self._feature_extractor.eval()
+        print("successfully load gn net")
 
     def _build_model(self):
         """ Build image retrieval network and load pre-trained weights.
@@ -140,11 +140,11 @@ class ImageRetrievalModel():
             # torch.Size([1, 16, 96, 128])
             # torch.Size([1, 16, 192, 256])
             # torch.Size([1, 16, 384, 512])
-            # hypercolumn = self._feature_extractor.get_embedding(feature_map)[2]
+            # hypercolumn = self._feature_extractor.get_embedding(feature_map)[3]
             # modified 
-            # feature_maps = self._feature_extractor.get_embedding(feature_map)
+            feature_maps = self._feature_extractor.get_embedding(feature_map)
             # lixin: discard the last feature map with largest feature resolution due to memory problem
-            # feature_maps = feature_maps[:-1]
+            feature_maps = feature_maps[:-1]
             # for i in range(len(hypercolumn)):
             #     print(hypercolumn[i].shape)
             # feature_maps, j = [], 0
@@ -156,14 +156,14 @@ class ImageRetrievalModel():
             #         j+=1
             #     feature_map = layer(feature_map)
 
-            feature_maps, j = [], 0
-            for i, layer in enumerate(list(self._model.encoder.children())):
-                if(j==len(self._hypercolumn_layers)):
-                    break
-                if(i==self._hypercolumn_layers[j]):
-                    feature_maps.append(feature_map)
-                    j+=1
-                feature_map = layer(feature_map)
+            # feature_maps, j = [], 0
+            # for i, layer in enumerate(list(self._model.encoder.children())):
+            #     if(j==len(self._hypercolumn_layers)):
+            #         break
+            #     if(i==self._hypercolumn_layers[j]):
+            #         feature_maps.append(feature_map)
+            #         j+=1
+            #     feature_map = layer(feature_map)
 
             # Final descriptor size (concat. intermediate features)
             final_descriptor_size = sum([x.shape[1] for x in feature_maps])
@@ -194,6 +194,7 @@ class ImageRetrievalModel():
         # print(hypercolumn.shape)
         # print(image_resolution)
 
+        # print(hypercolumn.shape)
         return hypercolumn, image_resolution
 
     @property
@@ -205,7 +206,7 @@ class ImageRetrievalModel():
         """ Extract Multiple Layers and concatenate them as hypercolumns
         Args:
             image: A list of image paths.
-            image_size: The maximum image size.
+            image_size: The maximum imgnnet
             resize: Whether images should be resized when loaded.
             to_cpu: Whether the resulting hypercolumns should be moved to cpu.
         Returns:

@@ -40,7 +40,7 @@ class SparseToDensePredictor(predictor.PosePredictor):
         self._filename_to_local_reconstruction = \
             self._dataset.data['filename_to_local_reconstruction']
         
-        self._featurePnP = optimization.FeaturePnP(iterations=100, device=device, loss_fn=losses.squared_loss, lambda_=100, verbose=True) 
+        self._featurePnP = optimization.FeaturePnP(iterations=100, device=device, loss_fn=losses.squared_loss, lambda_=100, verbose=False) 
 
     def _compute_sparse_reference_hypercolumn(self, reference_image,
                                               local_reconstruction,
@@ -137,9 +137,18 @@ class SparseToDensePredictor(predictor.PosePredictor):
             predictions = [prediction]
             reference_prediction = self._nearest_neighbor_prediction(
                     reference_image)
-            gt_pose = self._corr._data['poses'][i]
-            pred_pose = prediction.matrix @ np.linalg.inv(reference_prediction.matrix)
+            # gt_pose = self._corr._data['poses'][i]
+            # pred_pose = prediction.matrix @ np.linalg.inv(reference_prediction.matrix)
+            gt_pose = np.linalg.inv(self._corr._data['poses'][i]) * reference_prediction.matrix
+            pred_pose = prediction.matrix
+            # print(gt_pose)
+            # print(pred_pose)
+            # print(prediction.matrix)
+            # print(reference_prediction.matrix)
             dr, dt = losses.pose_error_mat(gt_pose, pred_pose)
+            # print(dr)
+            # print(dt)
+            # exit(0)
             pose_errors[i, 0] = dr
             pose_errors[i, 1] = dt
             num_inliers[i] = prediction.num_inliers
@@ -203,8 +212,8 @@ class SparseToDensePredictor(predictor.PosePredictor):
                     "[{} inliers]".format(best_prediction.num_inliers))
                 tqdm_bar.refresh()
 
-        np.save("retrieval_error_sun", pose_errors)
-        np.save("retrieval_num_inliers_sun", num_inliers)
+        np.save("gnnet_error_sun", pose_errors)
+        np.save("gnnet_num_inliers_sun", num_inliers)
         return output
             
 
@@ -234,7 +243,7 @@ class SparseToDensePredictor(predictor.PosePredictor):
             for j in rank[:self._top_N]:
                 
                 # Compute dense reference hypercolumns
-                nearest_neighbor = self._dataset.data['tiny_reference_image_names'][j]
+                nearest_neighbor = self._dataset.data['reference_image_names'][j]
                 local_reconstruction = \
                     self._filename_to_local_reconstruction[nearest_neighbor]
                 reference_sparse_hypercolumns, cell_size, reference_dense_hypercolumn = \
@@ -281,17 +290,17 @@ class SparseToDensePredictor(predictor.PosePredictor):
                     reference_keypoints=None)
 
                 # Perform feature-metric PnP
-                self._featurePnP(
-                    query_prediction=prediction, 
-                    reference_prediction=self._nearest_neighbor_prediction(nearest_neighbor), 
-                    local_reconstruction=local_reconstruction,
-                    mask=mask,
-                    query_dense_hypercolumn=query_dense_hypercolumn_copy, 
-                    reference_dense_hypercolumn=reference_dense_hypercolumn,
-                    query_intrinsics=query_intrinsics[0],
-                    size_ratio=cell_size[0], 
-                    R_gt=None, 
-                    t_gt=None)
+                # self._featurePnP(
+                #     query_prediction=prediction, 
+                #     reference_prediction=self._nearest_neighbor_prediction(nearest_neighbor), 
+                #     local_reconstruction=local_reconstruction,
+                #     mask=mask,
+                #     query_dense_hypercolumn=query_dense_hypercolumn_copy, 
+                #     reference_dense_hypercolumn=reference_dense_hypercolumn,
+                #     query_intrinsics=query_intrinsics[0],
+                #     size_ratio=cell_size[0], 
+                #     R_gt=None, 
+                #     t_gt=None)
                 
                 # print("number of inliers: ", len(mask[mask==True]) )
                 # If PnP failed, fall back to nearest-neighbor prediction
