@@ -195,7 +195,12 @@ class FeaturePnP(nn.Module):
 
                 if R_gt is not None and t_gt is not None:
                     if self.verbose:
-                        r_error, t_error = pose_error(R, t, R_gt, t_gt)
+                        abs_pose = torch.zeros((4, 4), dtype=torch.float32, device=self.device)
+                        abs_pose[:3, :3] = R
+                        abs_pose[:3, 3] = t
+                        abs_pose[3, 3] = 1
+                        abs_pose = abs_pose @ r_matrix
+                        r_error, t_error = pose_error(abs_pose[:3, :3], abs_pose[:3, 3], R_gt, t_gt)
                         print('Pose error:', r_error.cpu().numpy(), t_error.cpu().numpy())
             return R, t
 

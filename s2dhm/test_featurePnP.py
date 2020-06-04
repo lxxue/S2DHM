@@ -232,8 +232,8 @@ def test_cmu_images():
     # R_gt = quaternion_matrix([0.079163, 0.010626, -0.712834, 0.696770])[:3, :3]
     # t_gt = np.array([230.506797, -30.319958, 22.247800])
     query_image = os.path.join(cmu_root, "slice6", "database", "img_01850_c0_1303398632313502us.jpg")
-    R_gt = quaternion_matrix([0.125874, 0.125877, -0.697687, 0.693933])[:3, :3]
-    t_gt = np.array([267.049565, 77.857004, 22.615668])
+    # R_gt = quaternion_matrix([0.125874, 0.125877, -0.697687, 0.693933])[:3, :3]
+    # t_gt = np.array([267.049565, 77.857004, 22.615668])
     
     bind_cmu_parameters(6, 'sparse_to_dense') 
     device = torch.device('cuda' if torch.cuda.is_available() else "cpu")
@@ -251,9 +251,24 @@ def test_cmu_images():
     query_idx = dataset.data['query_image_names'].index(query_image)
     query_dense_hypercolumn, _ = pose_predictor._network.compute_hypercolumn([query_image], to_cpu=False, resize=True)
     channels, width, height = query_dense_hypercolumn.shape[1:]
-    print(query_dense_hypercolumn.shape)
+    query_dense_hypercolumn_copy = query_dense_hypercolumn.clone().detach()
     query_dense_hypercolumn = query_dense_hypercolumn.squeeze().view(
         (channels, -1))
+
+    local_reconstruction = \
+        dataset.data['filename_to_local_reconstruction'][query_image]
+    ground_truth = solve_pnp.solve_pnp(
+        points_2D=local_reconstruction.points_2D,
+        points_3D=local_reconstruction.points_3D,
+        intrinsics=local_reconstruction.intrinsics,
+        distortion_coefficients=local_reconstruction.distortion_coefficients,
+        reference_filename=None,
+        reference_2D_points=local_reconstruction.points_2D,
+        reference_keypoints=None,
+    )
+    R_gt = torch.from_numpy(ground_truth.matrix[:3, :3].astype(np.float32)).cuda()
+    t_gt = torch.from_numpy(ground_truth.matrix[:3, 3].astype(np.float32)).cuda()
+    
     for i in range(15):
         nn_idx = ranks[query_idx][i]
         nearest_neighbor = dataset.data['reference_image_names'][nn_idx]
@@ -293,12 +308,39 @@ def test_cmu_images():
             reference_filename=nearest_neighbor,
             reference_2D_points=local_reconstruction.points_2D[mask],
             reference_keypoints=None)
-    
-        R_pred = prediction.matrix[:3, :3]
-        t_pred = prediction.matrix[:3, 3]
 
-        print(t_gt, t_pred)
-        print(pose_error_np(R_gt, t_gt, R_pred, t_pred))
+        R_pred = torch.from_numpy(prediction.matrix[:3, :3].astype(np.float32)).cuda()
+        t_pred = torch.from_numpy(prediction.matrix[:3, 3].astype(np.float32)).cuda()
+
+        # print(t_gt, t_pred)
+        init_R_error, init_t_error = pose_error(R_gt, t_gt, R_pred, t_pred)
+        print("initial pose error: ", init_R_error.item(), init_t_error.item())
+        
+        # ground_truth = solve_pnp.solve_pnp(
+        #     points_2D=local_reconstruction.points_2D,
+        #     points_3D=local_reconstruction.points_3D,
+        #     intrinsics=local_reconstruction.intrinsics,
+        #     distortion_coefficients=local_reconstruction.distortion_coefficients,
+        #     reference_filename=None,
+        #     reference_2D_points=local_reconstruction.points_2D,
+        #     reference_keypoints=None,
+        # )
+        # relative_gt = torch.from_numpy((ground_truth.matrix @ np.linalg.inv(reference_prediction.matrix)).astype(np.float32)).cuda()
+        # relative_R_gt = relative_gt[:3, :3]
+        # relative_t_gt = relative_gt[:3, 3]
+
+        pose_predictor._featurePnP(
+            query_prediction=prediction, 
+            reference_prediction=reference_prediction, 
+            local_reconstruction=local_reconstruction,
+            mask=mask,
+            query_dense_hypercolumn=query_dense_hypercolumn_copy, 
+            reference_dense_hypercolumn=reference_dense_hypercolumn,
+            query_intrinsics=local_reconstruction.intrinsics,
+            size_ratio=cell_size[0], 
+            R_gt=R_gt, 
+            t_gt=t_gt)
+    
 
     # nearest_neighbor = dataset.datalocal/home/lixxue/S2DHM/data/ranks/cmu
     '''
