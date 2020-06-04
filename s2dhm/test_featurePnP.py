@@ -225,16 +225,21 @@ def bind_cmu_parameters(cmu_slice, mode):
 
 def test_cmu_images():
     cmu_root = "/local/home/lixxue/S2DHM/data/cmu_extended/"
-    query_image = os.path.join(cmu_root, "slice6", "query", "img_04210_c1_1283348121556806us.jpg")
-    R_gt = quaternion_matrix([0.071491, 0.000635, -0.712314, 0.698210])[:3, :3]
-    t_gt = np.array([231.068248, -30.488086, 22.226670])
+    # query_image = os.path.join(cmu_root, "slice6", "query", "img_04210_c1_1283348121556806us.jpg")
+    # R_gt = quaternion_matrix([0.071491, 0.000635, -0.712314, 0.698210])[:3, :3]
+    # t_gt = np.array([231.068248, -30.488086, 22.226670])
+    # query_image = os.path.join(cmu_root, "slice6", "query", "img_01581_c1_1287503945814271us.jpg")
+    # R_gt = quaternion_matrix([0.079163, 0.010626, -0.712834, 0.696770])[:3, :3]
+    # t_gt = np.array([230.506797, -30.319958, 22.247800])
+    query_image = os.path.join(cmu_root, "slice6", "database", "img_01850_c0_1303398632313502us.jpg")
+    R_gt = quaternion_matrix([0.125874, 0.125877, -0.697687, 0.693933])[:3, :3]
+    t_gt = np.array([267.049565, 77.857004, 22.615668])
     
-
-
     bind_cmu_parameters(6, 'sparse_to_dense') 
     device = torch.device('cuda' if torch.cuda.is_available() else "cpu")
     gin.parse_config_file("configs/runs/run_sparse_to_dense_on_cmu.gin")
     dataset = get_dataset_loader()
+    dataset.data['query_image_names'] = [query_image]
     net = network.ImageRetrievalModel(device=device)
     ranks = rank_images.fetch_or_compute_ranks(dataset, net).T
     pose_predictor = get_pose_predictor(dataset=dataset,
@@ -244,53 +249,56 @@ def test_cmu_images():
     # print(dataset.data['query_image_names'])
 
     query_idx = dataset.data['query_image_names'].index(query_image)
-    query_dense_hypercolumn, _ = net.compute_hypercolumn([query_image], to_cpu=False, resize=True)
+    query_dense_hypercolumn, _ = pose_predictor._network.compute_hypercolumn([query_image], to_cpu=False, resize=True)
     channels, width, height = query_dense_hypercolumn.shape[1:]
+    print(query_dense_hypercolumn.shape)
     query_dense_hypercolumn = query_dense_hypercolumn.squeeze().view(
         (channels, -1))
-    nn_idx = ranks[query_idx][0]
-    nearest_neighbor = dataset.data['reference_image_names'][nn_idx]
-    local_reconstruction = \
-        dataset.data['filename_to_local_reconstruction'][nearest_neighbor]
-    reference_sparse_hypercolumns, cell_size, reference_dense_hypercolumn = \
-        pose_predictor._compute_sparse_reference_hypercolumn(
-        nearest_neighbor, local_reconstruction, return_dense=True)
-    reference_prediction = pose_predictor._nearest_neighbor_prediction(
-        nearest_neighbor)
+    for i in range(15):
+        nn_idx = ranks[query_idx][i]
+        nearest_neighbor = dataset.data['reference_image_names'][nn_idx]
+        if nearest_neighbor == query_image:
+            print("find exact the same image at rank {}".format(i))
+        local_reconstruction = \
+            dataset.data['filename_to_local_reconstruction'][nearest_neighbor]
+        reference_sparse_hypercolumns, cell_size, reference_dense_hypercolumn = \
+            pose_predictor._compute_sparse_reference_hypercolumn(
+            nearest_neighbor, local_reconstruction, return_dense=True)
+        reference_prediction = pose_predictor._nearest_neighbor_prediction(
+            nearest_neighbor)
 
 
-    print(query_dense_hypercolumn.shape)
-    print(reference_sparse_hypercolumns.shape)
-    matches_2D, mask = exhaustive_search.exhaustive_search(
-        query_dense_hypercolumn,
-        reference_sparse_hypercolumns,
-        Image.open(nearest_neighbor).size[::-1],
-        [width, height],
-        cell_size)
+        matches_2D, mask = exhaustive_search.exhaustive_search(
+            query_dense_hypercolumn,
+            reference_sparse_hypercolumns,
+            Image.open(nearest_neighbor).size[::-1],
+            [width, height],
+            cell_size)
 
-    points_2D = np.reshape(
-        matches_2D.cpu().numpy()[mask], (-1, 1, 2))
-    points_3D = np.reshape(
-        local_reconstruction.points_3D[mask], (-1, 1, 3))
-    distortion_coefficients = \
-        local_reconstruction.distortion_coefficients
+        points_2D = np.reshape(
+            matches_2D.cpu().numpy()[mask], (-1, 1, 2))
+        points_3D = np.reshape(
+            local_reconstruction.points_3D[mask], (-1, 1, 3))
+        distortion_coefficients = \
+            local_reconstruction.distortion_coefficients
     
-    # query_intrinsics, distortion_coefficients = pose_predictor._filename_to_intrinsics[query_image] 
-    prediction = solve_pnp.solve_pnp(
-        points_2D=points_2D,
-        points_3D=points_3D,
-        intrinsics=local_reconstruction.intrinsics,
-        distortion_coefficients=local_reconstruction.distortion_coefficients,
-        reference_filename=nearest_neighbor,
-        reference_2D_points=local_reconstruction.points_2D[mask],
-        reference_keypoints=None)
+        # query_intrinsics, query_distortion_coefficients = pose_predictor._filename_to_intrinsics[query_image] 
+        prediction = solve_pnp.solve_pnp(
+            points_2D=points_2D,
+            points_3D=points_3D,
+            intrinsics=local_reconstruction.intrinsics,
+            distortion_coefficients=local_reconstruction.distortion_coefficients,
+            # intrinsics=query_intrinsics,
+            # distortion_coefficients=query_distortion_coefficients,
+            reference_filename=nearest_neighbor,
+            reference_2D_points=local_reconstruction.points_2D[mask],
+            reference_keypoints=None)
     
-    R_pred = prediction.matrix[:3, :3]
-    t_pred = prediction.matrix[:3, 3]
+        R_pred = prediction.matrix[:3, :3]
+        t_pred = prediction.matrix[:3, 3]
 
-    print(R_gt.shape, t_gt.shape)
-    print(R_pred.shape, t_pred.shape)
-    print(pose_error_np(R_gt, t_gt, R_pred, t_pred))
+        print(t_gt, t_pred)
+        print(pose_error_np(R_gt, t_gt, R_pred, t_pred))
 
     # nearest_neighbor = dataset.datalocal/home/lixxue/S2DHM/data/ranks/cmu
     '''
